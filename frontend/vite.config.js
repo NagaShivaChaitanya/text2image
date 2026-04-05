@@ -6,8 +6,8 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      "/generate": "http://localhost:3001",
-      "/gallery": "http://localhost:3001",
+      "/generate": "https://text2image-1-ox70.onrender.com",
+      "/gallery": "https://text2image-1-ox70.onrender.com",
     },
   },
 });

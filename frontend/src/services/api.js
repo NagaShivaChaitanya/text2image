@@ -1,9 +1,9 @@
 import axios from "axios";
 
-const api = axios.create({ baseURL: "" });
+const api = axios.create({ baseURL: "https://text2image-1-ox70.onrender.com" });
 
 export const generateImage = async (prompt) => {
-  const res = await axios.post("http://localhost:3001/generate", { prompt });
+  const res = await api.post("/generate", { prompt });
   return res.data;
 };
 
