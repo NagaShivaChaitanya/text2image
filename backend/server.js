@@ -40,7 +40,7 @@ async function enhancePrompt(prompt) {
 
   try {
     const response = await axios.post(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GOOGLE_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GOOGLE_API_KEY}`,
       {
         contents: [
           {
@@ -118,6 +118,13 @@ function storeGalleryItem(item) {
 
 app.get("/gallery", (_req, res) => {
   res.json(gallery);
+});
+
+app.get("/generate", (_req, res) => {
+  res.status(405).json({
+    error: "Method not allowed",
+    message: "Use POST /generate with JSON body: { \"prompt\": \"your prompt\" }",
+  });
 });
 
 app.post("/generate", async (req, res) => {
