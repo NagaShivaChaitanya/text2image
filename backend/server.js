@@ -176,6 +176,7 @@ app.post("/generate", async (req, res) => {
     console.log("HF ERROR STATUS:", err.response?.status);
     console.log("HF ERROR DATA:", err.response?.data);
     console.log("HF MESSAGE:", err.message);
+
     const fallback = {
       image: buildFallbackImage(prompt),
       imageUrl: buildFallbackImage(prompt),
