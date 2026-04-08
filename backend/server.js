@@ -148,9 +148,8 @@ app.post("/generate", async (req, res) => {
   }
 
   try {
-    console.log("Using model: black-forest-labs/FLUX.1-schnell");
     const response = await axios({
-      url: "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell",
+      url: "https://router.huggingface.co/hf-inference/models/stabilityai/sdxl-turbo",
       method: "POST",
       headers: {
         Authorization: `Bearer ${process.env.HF_API_KEY}`,
@@ -158,45 +157,19 @@ app.post("/generate", async (req, res) => {
         Accept: "image/png",
       },
       data: {
-        inputs: enhancedPrompt || prompt,
-        options: {
-          wait_for_model: true,
-        },
+        inputs: prompt,
       },
       responseType: "arraybuffer",
       timeout: 120000,
     });
 
-    const contentType = response.headers["content-type"] || "";
-    if (contentType.includes("application/json")) {
-      const errorText = Buffer.isBuffer(response.data)
-        ? response.data.toString("utf8")
-        : typeof response.data === "string"
-          ? response.data
-          : JSON.stringify(response.data);
-      let error = errorText;
+    const base64 = Buffer.from(response.data).toString("base64");
 
-      try {
-        error = JSON.parse(errorText);
-      } catch {
-        // Keep the raw response text when the payload is not valid JSON.
-      }
-
-      return res.status(500).json({ error });
-    }
-
-    const image = Buffer.from(response.data, "binary").toString("base64");
-    const payload = {
-      image: `data:image/png;base64,${image}`,
-      imageUrl: `data:image/png;base64,${image}`,
-      id: Date.now(),
-      prompt,
-      enhancedPrompt,
+    return res.json({
+      image: `data:image/png;base64,${base64}`,
+      imageUrl: `data:image/png;base64,${base64}`,
       source: "huggingface",
-    };
-
-    storeGalleryItem(payload);
-    res.json(payload);
+    });
 
   } catch (err) {
     console.log("HF ERROR STATUS:", err.response?.status);
