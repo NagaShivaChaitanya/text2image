@@ -168,19 +168,13 @@ app.post("/generate", async (req, res) => {
     res.json(payload);
 
   } catch (err) {
-    console.error("HF ERROR:", err.response?.status, err.response?.data);
-    console.error("HF API Error:", err.response?.status);
-    console.error("HF API Response:", err.response?.data?.toString());
-    const fallback = {
-      image: buildFallbackImage(prompt),
-      imageUrl: buildFallbackImage(prompt),
-      id: Date.now(),
-      prompt,
-      enhancedPrompt,
+    console.log("HF ERROR STATUS:", err.response?.status);
+    console.log("HF ERROR DATA:", err.response?.data);
+    console.log("HF MESSAGE:", err.message);
+    return res.json({
       source: "fallback",
-    };
-    storeGalleryItem(fallback);
-    return res.json(fallback);
+      error: err.response?.data || err.message,
+    });
   }
 });
 
