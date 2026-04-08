@@ -163,6 +163,7 @@ app.post("/generate", async (req, res) => {
       timeout: 120000,
     });
 
+    console.log("HF bytes length:", response.data?.length);
     const base64 = Buffer.from(response.data).toString("base64");
 
     return res.json({
@@ -175,10 +176,14 @@ app.post("/generate", async (req, res) => {
     console.log("HF ERROR STATUS:", err.response?.status);
     console.log("HF ERROR DATA:", err.response?.data);
     console.log("HF MESSAGE:", err.message);
-    return res.json({
+    const fallback = {
+      image: buildFallbackImage(prompt),
+      imageUrl: buildFallbackImage(prompt),
       source: "fallback",
       error: err.response?.data || err.message,
-    });
+    };
+
+    return res.json(fallback);
   }
 });
 

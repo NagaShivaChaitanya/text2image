@@ -3,9 +3,7 @@ import React, { useState } from "react";
 export default function ResultCard({ image, imageUrl, prompt, enhancedPrompt, isNew }) {
   const [copied, setCopied] = useState(false);
   const downloadId = `image-${prompt.slice(0, 24).replace(/[^a-z0-9]+/gi, "-").toLowerCase() || "promptforge"}.png`;
-  const src = imageUrl || image || (typeof image === "string" && !image.startsWith("data:")
-    ? `data:image/png;base64,${image}`
-    : "");
+  const src = imageUrl || image;
 
   const copyPrompt = async () => {
     await navigator.clipboard.writeText(prompt);
@@ -35,7 +33,7 @@ export default function ResultCard({ image, imageUrl, prompt, enhancedPrompt, is
 
       <div className="relative aspect-square overflow-hidden">
         <img
-          src={src}
+          src={imageUrl || image}
           alt="generated"
           style={{ width: "100%", borderRadius: "10px" }}
         />
