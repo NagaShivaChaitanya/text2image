@@ -35,7 +35,7 @@ export default function ResultCard({ image, imageUrl, prompt, enhancedPrompt, is
 
       <div className="relative aspect-square overflow-hidden">
         <img
-          src={src}
+          src={imageUrl || image}
           alt="generated"
           style={{ width: "100%", borderRadius: "10px" }}
         />
