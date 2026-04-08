@@ -4,8 +4,24 @@ const cors = require("cors");
 const axios = require("axios");
 
 const app = express();
-app.use(cors());
+const allowedOrigins = (process.env.FRONTEND_ORIGIN || "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+app.use(
+  cors(
+    allowedOrigins.length
+      ? {
+          origin: allowedOrigins,
+        }
+      : undefined
+  )
+);
 app.use(express.json());
+
+const MAX_PROMPT_LENGTH = 1000;
+const MAX_GALLERY_ITEMS = 20;
 
 app.get("/", (_req, res) => {
   res.send("Server is running");
@@ -95,7 +111,7 @@ function buildFallbackImage(prompt) {
 
 function storeGalleryItem(item) {
   gallery.unshift(item);
-  if (gallery.length > 20) {
+  if (gallery.length > MAX_GALLERY_ITEMS) {
     gallery.pop();
   }
 }
@@ -152,6 +168,7 @@ app.post("/generate", async (req, res) => {
     res.json(payload);
 
   } catch (err) {
+    console.error("HF ERROR:", err.response?.status, err.response?.data);
     console.error("HF API Error:", err.response?.status);
     console.error("HF API Response:", err.response?.data?.toString());
     const fallback = {
