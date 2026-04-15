@@ -116,6 +116,25 @@ function storeGalleryItem(item) {
   }
 }
 
+function decodeHfError(err) {
+  const data = err?.response?.data;
+  if (!data) return err?.message || "Unknown error";
+
+  if (Buffer.isBuffer(data)) {
+    return data.toString("utf8");
+  }
+
+  if (typeof data === "string") {
+    return data;
+  }
+
+  try {
+    return JSON.stringify(data);
+  } catch {
+    return err?.message || "Unknown error";
+  }
+}
+
 app.get("/gallery", (_req, res) => {
   res.json(gallery);
 });
@@ -136,53 +155,75 @@ app.post("/generate", async (req, res) => {
 
   const enhancedPrompt = await enhancePrompt(prompt);
 
-  try {
-    console.log("Using model: black-forest-labs/FLUX.1-schnell");
-    const response = await axios({
-      url: "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell",
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.HF_API_KEY}`,
-        "Content-Type": "application/json",
-        Accept: "image/png",
-      },
-      data: {
-        inputs: enhancedPrompt || prompt,
-        options: {
-          wait_for_model: true,
-        },
-      },
-      responseType: "arraybuffer",
-      timeout: 120000,
-    });
+    const modelTargets = [
+      "black-forest-labs/FLUX.1-schnell",
+      "runwayml/stable-diffusion-v1-5",
+      "stabilityai/stable-diffusion-2-1",
+    ];
 
-    if (response.headers["content-type"].includes("application/json")) {
-      const error = JSON.parse(response.data.toString());
-      return res.status(500).json({ error });
+    let lastError = null;
+
+    for (const model of modelTargets) {
+      try {
+        console.log("Using model:", model);
+        const url = `https://api-inference.huggingface.co/models/${model}`;
+
+        const response = await axios({
+          url,
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${process.env.HF_API_KEY}`,
+            Accept: "image/png",
+          },
+          data: {
+            inputs: enhancedPrompt || prompt,
+          },
+          responseType: "arraybuffer",
+          timeout: 120000,
+        });
+
+        if (response.headers["content-type"]?.includes("application/json")) {
+          const errorText = response.data.toString();
+          throw new Error(errorText);
+        }
+
+        const image = Buffer.from(response.data, "binary").toString("base64");
+        const payload = {
+          image: `data:image/png;base64,${image}`,
+          imageUrl: `data:image/png;base64,${image}`,
+          id: Date.now(),
+          prompt,
+          enhancedPrompt,
+          source: "huggingface",
+          model,
+        };
+
+        storeGalleryItem(payload);
+        return res.json(payload);
+      } catch (err) {
+        lastError = err;
+        const errorText = decodeHfError(err);
+        console.log("HF MODEL FAILED:", model);
+        console.log("HF ERROR STATUS:", err.response?.status);
+        console.log("HF ERROR MESSAGE:", errorText);
+      }
     }
 
-    const image = Buffer.from(response.data, "binary").toString("base64");
+    const err = lastError || new Error("All Hugging Face models failed");
+    console.log("HF MESSAGE:", decodeHfError(err));
+    const fallbackImage = buildFallbackImage(enhancedPrompt || prompt);
     const payload = {
-      image: `data:image/png;base64,${image}`,
-      imageUrl: `data:image/png;base64,${image}`,
+      image: fallbackImage,
+      imageUrl: fallbackImage,
       id: Date.now(),
       prompt,
       enhancedPrompt,
-      source: "huggingface",
+      source: "fallback",
+      error: decodeHfError(err),
     };
 
     storeGalleryItem(payload);
-    res.json(payload);
-
-  } catch (err) {
-    console.log("HF ERROR STATUS:", err.response?.status);
-    console.log("HF ERROR DATA:", err.response?.data);
-    console.log("HF MESSAGE:", err.message);
-    return res.json({
-      source: "fallback",
-      error: err.response?.data || err.message,
-    });
-  }
+    return res.json(payload);
 });
 
 app.listen(process.env.PORT || 3001, () => {
