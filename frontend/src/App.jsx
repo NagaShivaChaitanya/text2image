@@ -13,7 +13,7 @@ export default function App() {
       <Home />
       <footer className="relative z-10 border-t border-border px-6 py-6 text-center">
         <p className="text-xs text-muted font-mono" style={{ fontFamily: "JetBrains Mono" }}>
-          Promptforge — powered by Hugging Face Stable Diffusion
+          Promptforge — image generation demo
         </p>
       </footer>
     </div>

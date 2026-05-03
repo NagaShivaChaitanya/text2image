@@ -72,10 +72,9 @@ text-to-image/
 
 ## Setup
 
-### 1. Get API Key
+### 1. Optional Prompt Enhancement Key
 
-Create account on Hugging Face
-Generate API token
+Create a Google AI Studio key only if you want prompt rewriting before image generation.
 
 ### 2. Backend
 
@@ -83,7 +82,7 @@ cd backend
 copy .env.example .env
 
 Add:
-HF_API_KEY=your_new_key
+GOOGLE_API_KEY=your_google_key_here
 
 Install and run:
 npm install
@@ -127,14 +126,14 @@ Returns saved images
 
 backend/.env
 
-HF_API_KEY=your_key_here
+GOOGLE_API_KEY=your_google_key_here
 
 ## Deployment
 
 Backend
 
 * Deploy on Render
-* Add HF_API_KEY in environment settings
+* Add GOOGLE_API_KEY only if you want prompt enhancement
 
 Frontend
 

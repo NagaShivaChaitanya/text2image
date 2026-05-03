@@ -21,7 +21,7 @@ export default function Header() {
           Gallery
         </a>
         <span className="text-xs font-mono px-2 py-1 rounded border border-border text-muted" style={{ fontFamily: "JetBrains Mono" }}>
-          DALL·E 3
+          Live image demo
         </span>
       </nav>
     </header>

@@ -2,8 +2,11 @@ require("dotenv").config({ path: __dirname + "/.env" });
 const express = require("express");
 const cors = require("cors");
 const axios = require("axios");
+const { InferenceClient } = require("@huggingface/inference");
 
 const app = express();
+const HF_IMAGE_MODEL = process.env.HF_IMAGE_MODEL || "runwayml/stable-diffusion-v1-5";
+const ENABLE_IMAGE_FALLBACK = (process.env.ENABLE_IMAGE_FALLBACK || "true") === "true";
 const allowedOrigins = (process.env.FRONTEND_ORIGIN || "")
   .split(",")
   .map((origin) => origin.trim())
@@ -20,7 +23,6 @@ app.use(
 );
 app.use(express.json());
 
-const MAX_PROMPT_LENGTH = 1000;
 const MAX_GALLERY_ITEMS = 20;
 
 app.get("/", (_req, res) => {
@@ -32,6 +34,7 @@ app.get("/health", (_req, res) => {
 });
 
 const gallery = [];
+const hfClient = process.env.HF_API_KEY ? new InferenceClient(process.env.HF_API_KEY) : null;
 
 async function enhancePrompt(prompt) {
   if (!process.env.GOOGLE_API_KEY) {
@@ -116,7 +119,7 @@ function storeGalleryItem(item) {
   }
 }
 
-function decodeHfError(err) {
+function decodeImageError(err) {
   const data = err?.response?.data;
   if (!data) return err?.message || "Unknown error";
 
@@ -133,6 +136,45 @@ function decodeHfError(err) {
   } catch {
     return err?.message || "Unknown error";
   }
+}
+
+async function generatePublicImage(prompt) {
+  const imageResponse = await axios.get(
+    `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}`,
+    {
+      responseType: "arraybuffer",
+      timeout: 120000,
+    }
+  );
+
+  const contentType = imageResponse.headers["content-type"] || "image/jpeg";
+  const imageBase64 = Buffer.from(imageResponse.data, "binary").toString("base64");
+
+  return {
+    image: `data:${contentType};base64,${imageBase64}`,
+    imageUrl: `data:${contentType};base64,${imageBase64}`,
+    contentType,
+  };
+}
+
+async function generateHfImage(prompt) {
+  if (!hfClient) {
+    throw new Error("HF_API_KEY missing");
+  }
+
+  const imageBlob = await hfClient.textToImage({
+    model: HF_IMAGE_MODEL,
+    inputs: prompt,
+  });
+
+  const buffer = Buffer.from(await imageBlob.arrayBuffer());
+  const imageBase64 = buffer.toString("base64");
+
+  return {
+    image: `data:image/png;base64,${imageBase64}`,
+    imageUrl: `data:image/png;base64,${imageBase64}`,
+    contentType: "image/png",
+  };
 }
 
 app.get("/gallery", (_req, res) => {
@@ -154,63 +196,72 @@ app.post("/generate", async (req, res) => {
   }
 
   const enhancedPrompt = await enhancePrompt(prompt);
+  const promptToUse = enhancedPrompt || prompt;
+  let hfErrorMessage = null;
 
-    const modelTargets = [
-      "black-forest-labs/FLUX.1-schnell",
-      "runwayml/stable-diffusion-v1-5",
-      "stabilityai/stable-diffusion-2-1",
-    ];
-
-    let lastError = null;
-
-    for (const model of modelTargets) {
+  try {
+    if (hfClient) {
       try {
-        console.log("Using model:", model);
-        const url = `https://api-inference.huggingface.co/models/${model}`;
+        console.log("Generating image with Hugging Face...");
+        const generated = await generateHfImage(promptToUse);
+        const { image, imageUrl, contentType } = generated;
 
-        const response = await axios({
-          url,
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${process.env.HF_API_KEY}`,
-            Accept: "image/png",
-          },
-          data: {
-            inputs: enhancedPrompt || prompt,
-          },
-          responseType: "arraybuffer",
-          timeout: 120000,
-        });
-
-        if (response.headers["content-type"]?.includes("application/json")) {
-          const errorText = response.data.toString();
-          throw new Error(errorText);
-        }
-
-        const image = Buffer.from(response.data, "binary").toString("base64");
         const payload = {
-          image: `data:image/png;base64,${image}`,
-          imageUrl: `data:image/png;base64,${image}`,
+          image,
+          imageUrl,
           id: Date.now(),
           prompt,
           enhancedPrompt,
           source: "huggingface",
-          model,
+          model: HF_IMAGE_MODEL,
+          contentType,
         };
 
         storeGalleryItem(payload);
         return res.json(payload);
-      } catch (err) {
-        lastError = err;
-        const errorText = decodeHfError(err);
-        console.log("HF MODEL FAILED:", model);
-        console.log("HF ERROR STATUS:", err.response?.status);
-        console.log("HF ERROR MESSAGE:", errorText);
+      } catch (hfErr) {
+        hfErrorMessage = decodeImageError(hfErr);
+        console.error("Hugging Face generation failed:", hfErrorMessage);
+        if (hfErrorMessage.toLowerCase().includes("credits") || hfErrorMessage.toLowerCase().includes("fal-ai")) {
+          console.error("HF routed to fal-ai, credits required");
+        }
       }
+    } else {
+      hfErrorMessage = "HF_API_KEY missing";
+      console.error("Hugging Face generation failed:", hfErrorMessage);
     }
 
-    const err = lastError || new Error("All Hugging Face models failed");
-    console.log("HF MESSAGE:", decodeHfError(err));
+    if (!ENABLE_IMAGE_FALLBACK) {
+      return res.status(502).json({
+        error: "Hugging Face image generation failed",
+        details: hfErrorMessage,
+        source: "huggingface",
+        model: HF_IMAGE_MODEL,
+      });
+    }
+
+    console.warn("Falling back to Pollinations after HF failure");
+    const generated = await generatePublicImage(promptToUse);
+
+    const { image, imageUrl, contentType } = generated;
+
+    const payload = {
+      image,
+      imageUrl,
+      id: Date.now(),
+      prompt,
+      enhancedPrompt,
+      source: "pollinations",
+      model: "pollinations-ai",
+      contentType,
+      warning: hfErrorMessage || null,
+    };
+
+    storeGalleryItem(payload);
+    return res.json(payload);
+  } catch (err) {
+    const errorMessage = decodeImageError(err);
+    console.error("Image generation error:", errorMessage);
     const fallbackImage = buildFallbackImage(enhancedPrompt || prompt);
     const payload = {
       image: fallbackImage,
@@ -219,11 +270,12 @@ app.post("/generate", async (req, res) => {
       prompt,
       enhancedPrompt,
       source: "fallback",
-      error: decodeHfError(err),
+      error: errorMessage,
     };
 
     storeGalleryItem(payload);
     return res.json(payload);
+  }
 });
 
 app.listen(process.env.PORT || 3001, () => {
