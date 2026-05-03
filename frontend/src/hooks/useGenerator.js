@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { generateImage, fetchGallery } from "../services/api";
 
 export function useGenerator() {
@@ -7,6 +7,15 @@ export function useGenerator() {
   const [result, setResult] = useState(null);
   const [gallery, setGallery] = useState([]);
   const [galleryLoading, setGalleryLoading] = useState(false);
+  const activeObjectUrlRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (activeObjectUrlRef.current) {
+        URL.revokeObjectURL(activeObjectUrlRef.current);
+      }
+    };
+  }, []);
 
   const generate = useCallback(async (prompt) => {
     setLoading(true);
@@ -14,32 +23,37 @@ export function useGenerator() {
     setResult(null);
     try {
       const data = await generateImage(prompt);
+      if (activeObjectUrlRef.current) {
+        URL.revokeObjectURL(activeObjectUrlRef.current);
+        activeObjectUrlRef.current = null;
+      }
+
       const imageUrl = data.imageUrl || data.image;
-      const normalized = { ...data, image: data.image || imageUrl, imageUrl };
+      if (typeof imageUrl === "string" && imageUrl.startsWith("blob:")) {
+        activeObjectUrlRef.current = imageUrl;
+      }
+
+      const normalized = {
+        ...data,
+        id: data.id || Date.now(),
+        prompt: data.prompt || prompt,
+        image: data.image || imageUrl,
+        imageUrl,
+      };
       setResult(normalized);
       setGallery((prev) => [
         {
-          id: data.id,
+          id: normalized.id,
           prompt,
           enhancedPrompt: data.enhancedPrompt,
-          image: data.image || imageUrl,
+          image: normalized.image,
           imageUrl,
           createdAt: new Date().toISOString(),
         },
         ...prev,
       ]);
     } catch (err) {
-      if (err.response?.status === 500 && err.response.data instanceof Blob) {
-        try {
-          const text = await err.response.data.text();
-          const errorData = JSON.parse(text);
-          setError(errorData.error);
-        } catch {
-          setError("Something went wrong. Please try again.");
-        }
-      } else {
-        setError(err.response?.data?.error || "Something went wrong. Please try again.");
-      }
+      setError(err?.message || "Something went wrong. Please try again.");
     } finally {
       setLoading(false);
     }
